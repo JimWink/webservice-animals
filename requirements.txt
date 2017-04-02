@@ -1,0 +1,4 @@
+aioredis
+hiredis
+sanic
+uvloop
