@@ -44,15 +44,16 @@ rp = RedisPoolSingleton()
 
 async def check_auth(username, password):
     pool = await rp.get_pool()
-    try:
-        with await pool as redis:
-            val = await redis.connection.execute(
-                'get',
-                f'animals:user:{username}'
-            )
-    except Exception:
-            return False
-    return bcrypt.checkpw(password.encode(), val)
+    with await pool as redis:
+        hashed = await redis.connection.execute(
+            'get',
+            f'animals:user:{username}'
+        )
+
+    if hashed is None:
+        return False
+
+    return bcrypt.checkpw(password.encode(), hashed)
 
 
 async def authenticate():
