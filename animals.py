@@ -60,7 +60,7 @@ async def authenticate():
     """Sends a 401 response that enables basic auth"""
     return text(
         'Incorrect credentials with Basic Auth.',
-        status=401, 
+        status=401,
         headers={'WWW-Authenticate': 'Basic realm="Login Required"'}
     )
 
@@ -94,7 +94,7 @@ async def authorize_admin():
     """Sends a 403 response"""
     return text(
         'Unauthorized action, administrative access required.',
-        status=403 
+        status=403
     )
 
 
@@ -133,7 +133,7 @@ async def speak(request, animal):
         )
     if val is None:
         return text('The animal {0} was not found.'.format(animal), status=404)
-    
+
     await sleep(5)
     return text(val.decode(), status=200)
 
@@ -154,7 +154,7 @@ async def add_animal(request, animal):
         )
 
     return text('Added {0} to the farm'.format(animal), status=201)
-    
+
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000)
