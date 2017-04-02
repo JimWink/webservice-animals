@@ -5,7 +5,9 @@ from base64 import b64decode
 from functools import wraps
 
 from asyncio import sleep, Lock
+
 import aioredis
+import bcrypt
 
 
 class RedisPoolSingleton:
@@ -41,7 +43,16 @@ rp = RedisPoolSingleton()
 
 
 async def check_auth(username, password):
-    return username == 'foo' and password == 'bar'
+    pool = await rp.get_pool()
+    try:
+        with await pool as redis:
+            val = await redis.connection.execute(
+                'get',
+                f'animals:user:{username}'
+            )
+    except Exception:
+            return False
+    return bcrypt.checkpw(password.encode(), val)
 
 
 async def authenticate():
@@ -83,12 +94,13 @@ async def speak(request, animal):
     pool = await rp.get_pool()
     try:
         with await pool as redis:
-            val = await redis.connection.execute('get', animal)
-    except Exception as e:
-        print(e)
+            val = await redis.connection.execute(
+                'get',
+                f'animals:item:{animal}'
+            )
+    except Exception:
         return text('The animal {0} was not found.'.format(animal), status=404)
     
-    print(b64decode(request.token).decode().split(':'))
     await sleep(5)
     return text(val.decode(), status=200)
 
@@ -101,7 +113,11 @@ async def add_animal(request, animal):
     """
     pool = await rp.get_pool()
     with await pool as redis:
-        redis.connection.execute('set', animal, request.body)
+        redis.connection.execute(
+            'set',
+            f'animals:item:{animal}',
+            request.body
+        )
 
     return text('Added {0} to the farm'.format(animal), status=201)
     
