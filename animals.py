@@ -92,13 +92,12 @@ async def speak(request, animal):
     What does this animal say???
     """
     pool = await rp.get_pool()
-    try:
-        with await pool as redis:
-            val = await redis.connection.execute(
-                'get',
-                f'animals:item:{animal}'
-            )
-    except Exception:
+    with await pool as redis:
+        val = await redis.connection.execute(
+            'get',
+            f'animals:item:{animal}'
+        )
+    if val is None:
         return text('The animal {0} was not found.'.format(animal), status=404)
     
     await sleep(5)
