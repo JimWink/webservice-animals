@@ -46,8 +46,8 @@ async def check_auth(username, password):
     pool = await rp.get_pool()
     with await pool as redis:
         hashed = await redis.connection.execute(
-            'get',
-            f'animals:user:{username}'
+            'hget',
+            f'animals:user:{username}', 'hash'
         )
 
     if hashed is None:
@@ -74,6 +74,39 @@ def requires_auth(f):
             return await authenticate()
         if not await check_auth(auth[0], auth[1]):
             return await authenticate()
+        return await f(request, *args, **kwargs)
+    return decorated
+
+
+async def check_admin(username):
+    pool = await rp.get_pool()
+    with await pool as redis:
+        admin = await redis.connection.execute(
+            'hget',
+            f'animals:user:{username}', 'admin'
+        )
+    if admin == b'true':
+        return True
+    return False
+
+
+async def authorize_admin():
+    """Sends a 403 response"""
+    return text(
+        'Unauthorized action, administrative access required.',
+        status=403 
+    )
+
+
+def requires_admin(f):
+    @wraps(f)
+    async def decorated(request, *args, **kwargs):
+        try:
+            auth = b64decode(request.token).decode().split(':')
+        except Exception as e:
+            return await authorize_admin()
+        if not await check_admin(auth[0]):
+            return await authorize_admin()
         return await f(request, *args, **kwargs)
     return decorated
 
@@ -106,6 +139,7 @@ async def speak(request, animal):
 
 
 @app.route('/animals/<animal>', methods=['PUT'])
+@requires_admin
 @requires_auth
 async def add_animal(request, animal):
     """
