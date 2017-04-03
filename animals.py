@@ -1,28 +1,37 @@
 from sanic import Sanic, Blueprint
 from sanic.response import text
 
+from argparse import ArgumentParser
 from base64 import b64decode
+from configparser import ConfigParser
 from functools import wraps
 
-from asyncio import sleep, Lock
+from asyncio import sleep
 
 import aioredis
 import bcrypt
 
 
-app = Sanic(__name__)
 bp = Blueprint('animals_blueprint')
-
+config = ConfigParser()
 pool = None
 
 
 @bp.listener('before_server_start')
 async def setup_redis_pool(app, loop):
     global pool
+    try:
+        redis_conf = config['redis']
+    except KeyError:
+        redis_conf = {}
+    interface = (
+        redis_conf.get('host', 'localhost'),
+        int(redis_conf.get('port', 6379))
+    )
     pool = await aioredis.create_pool(
-        ('localhost', 6379),
-        minsize=1,
-        maxsize=10
+        interface,
+        minsize=int(redis_conf.get('minsize', 1)),
+        maxsize=int(redis_conf.get('maxsize', 10))
     )
 
 
@@ -172,5 +181,17 @@ async def update_user(request, username):
 
 
 if __name__ == "__main__":
+
+    argparser = ArgumentParser()
+    argparser.add_argument(
+        "-c", "--config",
+        help="Specify config file", metavar="FILE"
+    )
+    args = argparser.parse_args()
+
+    if args.config:
+        config.read(args.config)
+
+    app = Sanic(__name__)
     app.blueprint(bp)
     app.run(host="127.0.0.1", port=8000, debug=True)

@@ -1,0 +1,5 @@
+[redis]
+host = localhost
+port = 6379
+minsize = 1
+maxsize = 5
