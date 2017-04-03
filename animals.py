@@ -31,6 +31,7 @@ class RedisPoolSingleton:
                     minsize=5,
                     maxsize=10
                 )
+                self._ready = True
         finally:
             self._lock.release()
 
@@ -44,7 +45,7 @@ rp = RedisPoolSingleton()
 
 async def check_auth(username, password):
     pool = await rp.get_pool()
-    with await pool as redis:
+    async with pool.get() as redis:
         hashed = await redis.connection.execute(
             'hget',
             f'animals:user:{username}', 'hash'
@@ -80,7 +81,7 @@ def requires_auth(f):
 
 async def check_admin(username):
     pool = await rp.get_pool()
-    with await pool as redis:
+    async with pool.get() as redis:
         admin = await redis.connection.execute(
             'hget',
             f'animals:user:{username}', 'admin'
@@ -126,7 +127,7 @@ async def speak(request, animal):
     What does this animal say???
     """
     pool = await rp.get_pool()
-    with await pool as redis:
+    async with pool.get() as redis:
         val = await redis.connection.execute(
             'get',
             f'animals:item:{animal}'
@@ -139,21 +140,51 @@ async def speak(request, animal):
 
 
 @app.route('/animals/<animal>', methods=['PUT'])
-@requires_admin
 @requires_auth
+@requires_admin
 async def add_animal(request, animal):
     """
     Add an animal to the database
     """
     pool = await rp.get_pool()
-    with await pool as redis:
-        redis.connection.execute(
+    async with pool.get() as redis:
+        await redis.connection.execute(
             'set',
             f'animals:item:{animal}',
             request.body
         )
 
     return text('Added {0} to the farm'.format(animal), status=201)
+
+
+@app.route('/animals/_users/<username>', methods=['POST'])
+@requires_auth
+@requires_admin
+async def update_user(request, username):
+    """
+    Creates a new user or updates user properties
+
+    Requires a JSON body with admin and password fields
+    """
+    try:
+        password = request.json['password']
+        admin = request.json['admin']
+    except Exception:
+        return text(
+            'Request must have a valid json body with a password and '
+            'admin field',
+            status=400
+        )
+    pool = await rp.get_pool()
+    async with pool.get() as redis:
+        await redis.connection.execute(
+            'hmset',
+            f'animals:user:{username}',
+            'hash', bcrypt.hashpw(password.encode(), bcrypt.gensalt()),
+            'admin', admin
+        )
+
+    return text('Added user {0}'.format(username), status=201)
 
 
 if __name__ == "__main__":
