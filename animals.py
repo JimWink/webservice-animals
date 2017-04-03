@@ -2,11 +2,11 @@ from sanic import Sanic, Blueprint
 from sanic.response import text
 
 from argparse import ArgumentParser
+from asyncio import sleep
 from base64 import b64decode
 from configparser import ConfigParser
 from functools import wraps
-
-from asyncio import sleep
+import ssl
 
 import aioredis
 import bcrypt
@@ -28,10 +28,17 @@ async def setup_redis_pool(app, loop):
         redis_conf.get('host', 'localhost'),
         int(redis_conf.get('port', 6379))
     )
+    sslctx = None
+    if redis_conf.get('use_ssl') and redis_conf['use_ssl'].lower() == 'true':
+        sslctx = ssl.SSLContext()
+        sslctx.load_cert_chain(redis_conf['ssl_cert'])
+
     pool = await aioredis.create_pool(
         interface,
         minsize=int(redis_conf.get('minsize', 1)),
-        maxsize=int(redis_conf.get('maxsize', 10))
+        maxsize=int(redis_conf.get('maxsize', 10)),
+        password=redis_conf.get('password', None),
+        ssl=sslctx
     )
 
 
