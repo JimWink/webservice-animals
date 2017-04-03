@@ -1,4 +1,4 @@
-from sanic import Sanic
+from sanic import Sanic, Blueprint
 from sanic.response import text
 
 from base64 import b64decode
@@ -10,41 +10,29 @@ import aioredis
 import bcrypt
 
 
-class RedisPoolSingleton:
-    """
-    Wrapper to provide the same redis connection pool to all handlers
-    """
-    def __init__(self):
-        self._redis = None
-        self._lock = Lock()
-        self._ready = False
-
-    async def get_pool(self):
-        if self._ready:
-            return self._redis
-
-        await self._lock.acquire()
-        try:
-            if not self._ready:
-                self._redis = await aioredis.create_pool(
-                    ('localhost', 6379),
-                    minsize=5,
-                    maxsize=10
-                )
-                self._ready = True
-        finally:
-            self._lock.release()
-
-        return self._redis
-
-
 app = Sanic(__name__)
+bp = Blueprint('animals_blueprint')
 
-rp = RedisPoolSingleton()
+pool = None
+
+
+@bp.listener('before_server_start')
+async def setup_redis_pool(app, loop):
+    global pool
+    pool = await aioredis.create_pool(
+        ('localhost', 6379),
+        minsize=1,
+        maxsize=10
+    )
+
+
+@bp.listener('after_server_stop')
+async def shutdown_redis_pool(app, loop):
+    pool.close()
+    await pool.wait_closed()
 
 
 async def check_auth(username, password):
-    pool = await rp.get_pool()
     async with pool.get() as redis:
         hashed = await redis.connection.execute(
             'hget',
@@ -80,7 +68,6 @@ def requires_auth(f):
 
 
 async def check_admin(username):
-    pool = await rp.get_pool()
     async with pool.get() as redis:
         admin = await redis.connection.execute(
             'hget',
@@ -112,7 +99,7 @@ def requires_admin(f):
     return decorated
 
 
-@app.route('/animals/')
+@bp.route('/animals/')
 async def hello(request):
     """
     Welcome
@@ -121,12 +108,11 @@ async def hello(request):
     return text(msg, status=200)
 
 
-@app.route('/animals/<animal>', methods=['GET'])
+@bp.route('/animals/<animal>', methods=['GET'])
 async def speak(request, animal):
     """
     What does this animal say???
     """
-    pool = await rp.get_pool()
     async with pool.get() as redis:
         val = await redis.connection.execute(
             'get',
@@ -139,14 +125,13 @@ async def speak(request, animal):
     return text(val.decode(), status=200)
 
 
-@app.route('/animals/<animal>', methods=['PUT'])
+@bp.route('/animals/<animal>', methods=['PUT'])
 @requires_auth
 @requires_admin
 async def add_animal(request, animal):
     """
     Add an animal to the database
     """
-    pool = await rp.get_pool()
     async with pool.get() as redis:
         await redis.connection.execute(
             'set',
@@ -157,7 +142,7 @@ async def add_animal(request, animal):
     return text('Added {0} to the farm'.format(animal), status=201)
 
 
-@app.route('/animals/_users/<username>', methods=['POST'])
+@bp.route('/animals/_users/<username>', methods=['POST'])
 @requires_auth
 @requires_admin
 async def update_user(request, username):
@@ -175,7 +160,6 @@ async def update_user(request, username):
             'admin field',
             status=400
         )
-    pool = await rp.get_pool()
     async with pool.get() as redis:
         await redis.connection.execute(
             'hmset',
@@ -188,4 +172,5 @@ async def update_user(request, username):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000)
+    app.blueprint(bp)
+    app.run(host="127.0.0.1", port=8000, debug=True)
