@@ -1,5 +1,0 @@
-aioredis
-bcrypt
-hiredis
-sanic
-uvloop
