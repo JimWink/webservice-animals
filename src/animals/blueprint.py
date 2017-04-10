@@ -17,19 +17,23 @@ bp = Blueprint('animals_blueprint')
 
 @bp.listener('before_server_start')
 async def setup_server(app, loop):
-    global pool
     redis_conf = app.config.get('redis', {})
-    interface = (
-        redis_conf.get('host', 'localhost'),
-        int(redis_conf.get('port', 6379))
-    )
     sslctx = None
     if redis_conf.get('use_ssl', False):
         sslctx = ssl.SSLContext()
         sslctx.load_cert_chain(redis_conf['ssl_cert'])
 
     await setup_redis_pool(redis_conf, sslctx=sslctx)
- 
+
+    farmer_conf = app.config.get('farmer', {})
+    password = farmer_conf.get('password', '12345')
+    await execute(
+        'hmset',
+        'animals:user:farmer',
+        'hash', bcrypt.hashpw(password.encode(), bcrypt.gensalt()),
+        'admin', 'true'
+    )
+
 
 @bp.listener('after_server_stop')
 async def shutdown_server(app, loop):
